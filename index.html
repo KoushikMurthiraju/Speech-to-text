@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audio Transcription - Record & Transcribe</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+      }
+
+      .container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        padding: 40px;
+        max-width: 600px;
+        width: 100%;
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 10px;
+        text-align: center;
+      }
+
+      .subtitle {
+        color: #666;
+        text-align: center;
+        margin-bottom: 30px;
+        font-size: 14px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 30px;
+      }
+
+      button {
+        padding: 12px 24px;
+        font-size: 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-weight: 600;
+      }
+
+      .record-btn {
+        background: #e74c3c;
+        color: white;
+      }
+
+      .record-btn:hover:not(:disabled) {
+        background: #c0392b;
+        transform: scale(1.05);
+      }
+
+      .record-btn:disabled {
+        background: #95a5a6;
+        cursor: not-allowed;
+      }
+
+      .stop-btn {
+        background: #34495e;
+        color: white;
+      }
+
+      .stop-btn:hover:not(:disabled) {
+        background: #2c3e50;
+        transform: scale(1.05);
+      }
+
+      .stop-btn:disabled {
+        background: #95a5a6;
+        cursor: not-allowed;
+      }
+
+      .transcribe-btn {
+        background: #27ae60;
+        color: white;
+      }
+
+      .transcribe-btn:hover:not(:disabled) {
+        background: #229954;
+        transform: scale(1.05);
+      }
+
+      .transcribe-btn:disabled {
+        background: #95a5a6;
+        cursor: not-allowed;
+      }
+
+      .status {
+        text-align: center;
+        margin: 20px 0;
+        padding: 15px;
+        border-radius: 8px;
+        font-weight: 500;
+      }
+
+      .status.recording {
+        background: #fee;
+        color: #c0392b;
+      }
+
+      .status.processing {
+        background: #e8f5e9;
+        color: #27ae60;
+      }
+
+      .status.error {
+        background: #ffebee;
+        color: #e74c3c;
+      }
+
+      .status.hidden {
+        display: none;
+      }
+
+      .recording-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        background: #e74c3c;
+        border-radius: 50%;
+        margin-right: 8px;
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      .transcript-container {
+        margin-top: 30px;
+      }
+
+      .transcript-label {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 10px;
+      }
+
+      .transcript {
+        background: #f8f9fa;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        padding: 20px;
+        min-height: 100px;
+        color: #333;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .transcript.empty {
+        color: #999;
+        font-style: italic;
+      }
+
+      .model-selector {
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      .model-selector label {
+        display: block;
+        margin-bottom: 8px;
+        color: #666;
+        font-weight: 500;
+      }
+
+      .model-selector select {
+        padding: 8px 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 14px;
+        cursor: pointer;
+        background: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎤 Audio Transcription</h1>
+      <p class="subtitle">Record audio and get instant transcription</p>
+
+      <div class="model-selector">
+        <label for="model">Whisper Model:</label>
+        <select id="model">
+          <option value="tiny">Tiny (Fastest)</option>
+          <option value="base" selected>Base (Recommended)</option>
+          <option value="small">Small (Better accuracy)</option>
+          <option value="medium">Medium (High accuracy)</option>
+          <option value="large">Large (Best accuracy)</option>
+        </select>
+      </div>
+
+      <div class="controls">
+        <button id="recordBtn" class="record-btn">🎙️ Start Recording</button>
+        <button id="stopBtn" class="stop-btn" disabled>⏹️ Stop</button>
+        <button id="transcribeBtn" class="transcribe-btn" disabled>
+          📝 Transcribe
+        </button>
+      </div>
+
+      <div id="status" class="status hidden"></div>
+
+      <div class="transcript-container">
+        <div class="transcript-label">Transcript:</div>
+        <div id="transcript" class="transcript empty">
+          No transcript yet. Record audio and click Transcribe.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+      let audioBlob = null;
+
+      const recordBtn = document.getElementById("recordBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const transcribeBtn = document.getElementById("transcribeBtn");
+      const statusDiv = document.getElementById("status");
+      const transcriptDiv = document.getElementById("transcript");
+      const modelSelect = document.getElementById("model");
+
+      // Request microphone access and start recording
+      recordBtn.addEventListener("click", async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          audioChunks = [];
+
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = () => {
+            audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+            transcribeBtn.disabled = false;
+            showStatus(
+              "Recording stopped. Click Transcribe to process.",
+              "processing"
+            );
+
+            // Stop all tracks
+            stream.getTracks().forEach((track) => track.stop());
+          };
+
+          mediaRecorder.start();
+          recordBtn.disabled = true;
+          stopBtn.disabled = false;
+          transcribeBtn.disabled = true;
+          showStatus(
+            '<span class="recording-indicator"></span>Recording... Click Stop when finished.',
+            "recording"
+          );
+        } catch (error) {
+          showStatus("Error accessing microphone: " + error.message, "error");
+          console.error("Error accessing microphone:", error);
+        }
+      });
+
+      // Stop recording
+      stopBtn.addEventListener("click", () => {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+          recordBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      });
+
+      // Transcribe audio
+      transcribeBtn.addEventListener("click", async () => {
+        if (!audioBlob) {
+          showStatus("No audio recorded. Please record first.", "error");
+          return;
+        }
+
+        transcribeBtn.disabled = true;
+        showStatus(
+          "Processing transcription... This may take a moment.",
+          "processing"
+        );
+        transcriptDiv.textContent = "Processing...";
+        transcriptDiv.classList.remove("empty");
+
+        try {
+          const formData = new FormData();
+          formData.append("audio", audioBlob, "recording.webm");
+          formData.append("model", modelSelect.value);
+
+          const response = await fetch("/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            transcriptDiv.textContent =
+              data.transcript || "No text transcribed.";
+            transcriptDiv.classList.remove("empty");
+            showStatus("Transcription complete!", "processing");
+          } else {
+            throw new Error(data.error || "Transcription failed");
+          }
+        } catch (error) {
+          showStatus("Error: " + error.message, "error");
+          transcriptDiv.textContent = "Error: " + error.message;
+          transcriptDiv.classList.add("empty");
+        } finally {
+          transcribeBtn.disabled = false;
+        }
+      });
+
+      function showStatus(message, type) {
+        statusDiv.textContent = "";
+        statusDiv.innerHTML = message;
+        statusDiv.className = `status ${type}`;
+      }
+    </script>
+  </body>
+</html>
